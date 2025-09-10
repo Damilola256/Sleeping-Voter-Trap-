@@ -5,16 +5,10 @@ drosera_address = "0x91cB447BaFc6e0EA0F4Fe056F5a9b1F14bb06e5D"
 
 [traps]
 
-[traps.hello_world]
-path = "out/HelloWorldTrap.sol/HelloWorldTrap.json"
-response_contract = "0x183D78491555cb69B68d2354F7373cc2632508C7"
-response_function = "helloworld(string)"
-cooldown_period_blocks = 33
-min_number_of_operators = 1
-max_number_of_operators = 2
-block_sample_size = 10
-private_trap = true
-whitelist = []
+trap_name = "SleepingVoterTrap"
+trap_address = "0x..." # TODO: Replace with the deployed SleepingVoterTrap address
+response_contract = "0x..." # TODO: Replace with the deployed SleepingVoterResponse address
+handler_address = "0x..." # TODO: Replace with the deployed SleepingVoterResponse address
 
 # Uncomment this to deploy the TransferEventTrap
 

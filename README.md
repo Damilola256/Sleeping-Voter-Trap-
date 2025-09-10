@@ -1,94 +1,96 @@
-# Drosera Trap Foundry Template
+# Sleeping Voter Drosera Trap
 
-This repo is for quickly bootstrapping a new Drosera project. It includes instructions for creating your first trap, deploying it to the Drosera network, and updating it on the fly.
+Hello! I've created this project to demonstrate a "Sleeping Voter" trap using the Drosera Protocol. This trap is designed to monitor the on-chain activity of large token holders in a DAO, specifically those who have been inactive in governance, and to trigger a response when they "wake up."
 
-[![view - Documentation](https://img.shields.io/badge/view-Documentation-blue?style=for-the-badge)](https://dev.drosera.io "Project documentation")
-[![Twitter](https://img.shields.io/twitter/follow/DroseraNetwork?style=for-the-badge)](https://x.com/DroseraNetwork)
+## What is a Sleeping Voter?
 
-## Configure dev environment
+In the context of a DAO, a "sleeping voter" is an address that holds a significant amount of governance tokens but does not actively participate in voting on proposals. These addresses have the potential to heavily influence the outcome of a vote, and their sudden activity can be a significant event for the DAO.
 
-```bash
-curl -L https://foundry.paradigm.xyz | bash
-foundryup
+## How the Trap Works
 
-# The trap-foundry-template utilizes node modules for dependency management
-# install Bun (optional)
-curl -fsSL https://bun.sh/install | bash
+This Drosera trap monitors the balance of a specific ERC20 governance token for a predefined "sleeping voter" address. Here's the logic:
 
-# install node modules
-bun install
+1.  **Monitoring:** The `SleepingVoterTrap` contract continuously monitors the token balance of the tracked address.
+2.  **Threshold:** I've set a `BALANCE_THRESHOLD` in the contract. This is the minimum amount by which the token balance must change to be considered a significant event.
+3.  **Trigger:** If the balance of the tracked address changes by an amount greater than the `BALANCE_THRESHOLD` (either an increase or a decrease), the trap's `shouldRespond` function returns `true`.
+4.  **Response:** When the trap is triggered, the Drosera network calls the `respond` function in the `SleepingVoterResponse` contract. This response contract then emits a `VoterWokeUp` event, logging the voter's address, their previous balance, and their new balance. This event can be monitored by off-chain services, bots, or community members to alert them of the activity.
 
-# install vscode (optional)
-# - add solidity extension JuanBlanco.solidity
+This trap is built to be reactive, in line with the Drosera philosophy. It doesn't predict future actions but rather reacts to on-chain events as they happen.
 
-# install drosera-cli
-curl -L https://app.drosera.io/install | bash
-droseraup
-```
+## Contracts
 
-open the VScode preferences and Select `Soldity: Change workpace compiler version (Remote)`
+*   `src/SleepingVoterTrap.sol`: The main trap contract that monitors the token balance.
+*   `src/SleepingVoterResponse.sol`: The response contract that is called when the trap is triggered.
+*   `src/ResponseProtocol.sol`: A base contract for the response contract.
 
-Select version `0.8.12`
+## Getting Started
 
-## Quick Start
+### Prerequisites
 
-### Hello World Trap
+*   [Foundry](https://getfoundry.sh/)
+*   [Drosera Prover](https://dev.drosera.io/)
 
-The drosera.toml file is configured to deploy a simple "Hello, World!" trap. Ensure the drosera.toml file is set to the following configuration:
+### Installation
 
-```toml
-response_contract = "0xdA890040Af0533D98B9F5f8FE3537720ABf83B0C"
-response_function = "helloworld(string)"
-```
+1.  Clone the repository:
+    ```bash
+    git clone <repository-url>
+    cd sleeping-voter-trap
+    ```
+2.  Install dependencies:
+    ```bash
+    forge install
+    ```
 
-To deploy the trap, run the following commands:
+### Deployment
 
-```bash
-# Compile the Trap
-forge build
+This project requires deploying two contracts: the `SleepingVoterResponse` and the `SleepingVoterTrap`.
 
-# Deploy the Trap
-DROSERA_PRIVATE_KEY=0x.. drosera apply
-```
+1.  **Deploy the Response Contract:**
 
-After successfully deploying the trap, the CLI will add an `address` field to the `drosera.toml` file.
+    The response contract needs to be deployed first to get its address. I've included a Foundry script to make this easy.
 
-Congratulations! You have successfully deployed your first trap!
+    ```bash
+    forge script scripts/Deploy.s.sol --rpc-url <your-rpc-url> --private-key <your-private-key> --broadcast
+    ```
 
-### Response Trap
+    This will deploy the `SleepingVoterResponse` contract and log its address to the console.
 
-You can then update the trap by changing its logic and recompling it or changing the path field in the `drosera.toml` file to point to the Response Trap.
+2.  **Update `drosera.toml`:**
 
-The Response Trap is designed to trigger a response at a specific block number. To test the Response Trap, pick a future block number and update the Response Trap.
-Specify a response contract address and function signature in the drosera.toml file to the following:
+    Open the `drosera.toml` file and replace the placeholder addresses with the address of the deployed `SleepingVoterResponse` contract.
 
-```toml
-response_contract = "0x183D78491555cb69B68d2354F7373cc2632508C7"
-response_function = "responseCallback(uint256)"
-```
+    ```toml
+    trap_name = "SleepingVoterTrap"
+    trap_address = "0x..." # This will be deployed by the Drosera CLI
+    response_contract = "0x<deployed-response-contract-address>"
+    handler_address = "0x<deployed-response-contract-address>"
+    ```
 
-Finally, deploy the Response Trap by running the following commands:
+3.  **Deploy the Trap Contract:**
 
-```bash
-# Compile the Trap
-forge build
+    The `SleepingVoterTrap` is deployed using the Drosera CLI. Before deploying, you'll need to replace the placeholder addresses in `src/SleepingVoterTrap.sol` with the actual addresses you want to monitor.
 
-# Deploy the Trap
-DROSERA_PRIVATE_KEY=0x.. drosera apply
-```
+    ```solidity
+    // src/SleepingVoterTrap.sol
+    address public constant trackedAddress = 0x...; // Address of the sleeping voter
+    IERC20 public constant token = IERC20(0x...); // Address of the governance token
+    ```
 
-> Note: The `DROSERA_PRIVATE_KEY` environment variable can be used to deploy traps. You can also set it in the drosera.toml file as `private_key = "0x.."`.
+    Once you've updated the addresses, you can deploy the trap using the Drosera documentation.
 
+### Testing
 
-### Transfer Event Trap
-The TransferEventTrap is an example of how a Trap can parse event logs from a block and respond to a specific ERC-20 token transfer events.
-
-To deploy the Transfer Event Trap, uncomment the `transfer_event_trap` section in the `drosera.toml` file. Add the token address to the `tokenAddress` constant in the `TransferEventTrap.sol` file and then deploy the trap.
-
-## Testing
-
-Example tests are included in the `tests` directory. They simulate how Drosera Operators execute traps and determine if a response should be triggered. To run the tests, execute the following command:
+I've included a test suite for the `SleepingVoterTrap` contract. You can run the tests using Foundry:
 
 ```bash
 forge test
 ```
+
+This will run the tests in `test/SleepingVoterTrap.t.sol` and ensure that the trap's logic is working as expected.
+
+## A Note on Hardcoded Addresses
+
+As per the requirements, all addresses and configuration values in the contracts are hardcoded. This is a constraint of the current Drosera implementation, which does not support constructor arguments or initializers for traps. While this makes the contracts less flexible, it ensures they are secure and easy to deploy within the Drosera ecosystem. For testing purposes, this means that some tests have to work around the hardcoded addresses, but the core logic is fully tested.
+
+I hope this project is a clear and useful example of how to build a Drosera trap. Let me know if you have any questions!
