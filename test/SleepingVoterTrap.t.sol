@@ -50,14 +50,12 @@ contract SleepingVoterTrapTest is Test {
     SleepingVoterTrap public trap;
     MockERC20 public mockToken;
     address public trackedAddress;
-    address public operator;
     address public anotherAddress;
 
     function setUp() public {
         trap = new SleepingVoterTrap();
         mockToken = new MockERC20("Mock UNI", "mUNI", 18);
         trackedAddress = trap.trackedAddress();
-        operator = address(this);
         anotherAddress = address(0x2);
 
         // Deploy the mock token's code at the hardcoded token address
@@ -65,9 +63,6 @@ contract SleepingVoterTrapTest is Test {
 
         // Mint some tokens to the tracked address
         MockERC20(address(trap.token())).mint(trackedAddress, 10000 * 1e18);
-
-        // Whitelist the operator
-        trap.addWhitelisted(operator);
     }
 
     /// @notice Tests that the `collect` function returns the correct data.
@@ -77,13 +72,22 @@ contract SleepingVoterTrapTest is Test {
         assertEq(balance, 10000 * 1e18);
     }
 
-    /// @notice Tests that `shouldRespond` returns false when the balance change is below the threshold.
-    function testShouldRespond_BelowThreshold() public {
-        uint256 initialBalance = 10000 * 1e18;
-        uint256 newBalance = initialBalance + (trap.BALANCE_THRESHOLD() / 2);
+    /// @notice Tests that `collect` returns a balance of 0 if the token contract does not exist.
+    function testCollect_NoTokenContract() public {
+        // Overwrite the token contract with an empty address
+        vm.etch(address(trap.token()), bytes(""));
+        (address collectedAddress, uint256 balance) = abi.decode(trap.collect(), (address, uint256));
+        assertEq(collectedAddress, trackedAddress);
+        assertEq(balance, 0);
+    }
 
-        bytes memory data0 = abi.encode(trackedAddress, initialBalance);
-        bytes memory data1 = abi.encode(trackedAddress, newBalance);
+    /// @notice Tests that `shouldRespond` returns false when the balance change is below all thresholds.
+    function testShouldRespond_BelowThreshold() public {
+        uint256 previousBalance = 10000 * 1e18;
+        uint256 currentBalance = previousBalance + 1;
+
+        bytes memory data0 = abi.encode(trackedAddress, currentBalance); // Current
+        bytes memory data1 = abi.encode(trackedAddress, previousBalance); // Previous
         bytes[] memory data = new bytes[](2);
         data[0] = data0;
         data[1] = data1;
@@ -92,13 +96,13 @@ contract SleepingVoterTrapTest is Test {
         assertFalse(triggered);
     }
 
-    /// @notice Tests that `shouldRespond` returns true when the balance change is above the threshold.
-    function testShouldRespond_AboveThreshold() public {
-        uint256 initialBalance = 10000 * 1e18;
-        uint256 newBalance = initialBalance + trap.BALANCE_THRESHOLD() + 1;
+    /// @notice Tests that `shouldRespond` returns true when the balance change is above the absolute threshold.
+    function testShouldRespond_AboveAbsoluteThreshold() public {
+        uint256 previousBalance = 10000 * 1e18;
+        uint256 currentBalance = previousBalance + trap.BALANCE_THRESHOLD_ABSOLUTE() + 1;
 
-        bytes memory data0 = abi.encode(trackedAddress, initialBalance);
-        bytes memory data1 = abi.encode(trackedAddress, newBalance);
+        bytes memory data0 = abi.encode(trackedAddress, currentBalance);
+        bytes memory data1 = abi.encode(trackedAddress, previousBalance);
         bytes[] memory data = new bytes[](2);
         data[0] = data0;
         data[1] = data1;
@@ -106,21 +110,21 @@ contract SleepingVoterTrapTest is Test {
         (bool triggered, bytes memory responseData) = trap.shouldRespond(data);
         assertTrue(triggered);
 
-        (address respTrackedAddress, uint256 respBalance0, uint256 respBalance1) =
+        (address respTrackedAddress, uint256 respPreviousBalance, uint256 respCurrentBalance) =
             abi.decode(responseData, (address, uint256, uint256));
 
         assertEq(respTrackedAddress, trackedAddress);
-        assertEq(respBalance0, initialBalance);
-        assertEq(respBalance1, newBalance);
+        assertEq(respPreviousBalance, previousBalance);
+        assertEq(respCurrentBalance, currentBalance);
     }
-    
-    /// @notice Tests that `shouldRespond` returns true when the balance decreases and is above the threshold.
-    function testShouldRespond_AboveThreshold_Decrement() public {
-        uint256 initialBalance = 10000 * 1e18;
-        uint256 newBalance = initialBalance - (trap.BALANCE_THRESHOLD() + 1);
 
-        bytes memory data0 = abi.encode(trackedAddress, initialBalance);
-        bytes memory data1 = abi.encode(trackedAddress, newBalance);
+    /// @notice Tests that `shouldRespond` returns true when the balance decreases and is above the absolute threshold.
+    function testShouldRespond_AboveAbsoluteThreshold_Decrement() public {
+        uint256 previousBalance = 10000 * 1e18;
+        uint256 currentBalance = previousBalance - (trap.BALANCE_THRESHOLD_ABSOLUTE() + 1);
+
+        bytes memory data0 = abi.encode(trackedAddress, currentBalance);
+        bytes memory data1 = abi.encode(trackedAddress, previousBalance);
         bytes[] memory data = new bytes[](2);
         data[0] = data0;
         data[1] = data1;
@@ -128,12 +132,28 @@ contract SleepingVoterTrapTest is Test {
         (bool triggered, bytes memory responseData) = trap.shouldRespond(data);
         assertTrue(triggered);
 
-        (address respTrackedAddress, uint256 respBalance0, uint256 respBalance1) =
+        (address respTrackedAddress, uint256 respPreviousBalance, uint256 respCurrentBalance) =
             abi.decode(responseData, (address, uint256, uint256));
 
         assertEq(respTrackedAddress, trackedAddress);
-        assertEq(respBalance0, initialBalance);
-        assertEq(respBalance1, newBalance);
+        assertEq(respPreviousBalance, previousBalance);
+        assertEq(respCurrentBalance, currentBalance);
+    }
+
+    /// @notice Tests that `shouldRespond` returns true when the relative threshold is crossed.
+    function testShouldRespond_AboveRelativeThreshold() public {
+        uint256 previousBalance = 10000 * 1e18;
+        // A change that is less than absolute threshold but more than 1% (100 BPS)
+        uint256 currentBalance = previousBalance + (previousBalance * (trap.BALANCE_THRESHOLD_BPS() + 1)) / 10000;
+
+        bytes memory data0 = abi.encode(trackedAddress, currentBalance);
+        bytes memory data1 = abi.encode(trackedAddress, previousBalance);
+        bytes[] memory data = new bytes[](2);
+        data[0] = data0;
+        data[1] = data1;
+
+        (bool triggered, ) = trap.shouldRespond(data);
+        assertTrue(triggered);
     }
 
     /// @notice Tests that `shouldRespond` returns false when there is not enough data.
@@ -145,39 +165,18 @@ contract SleepingVoterTrapTest is Test {
         assertFalse(triggered);
     }
 
-    /// @notice Tests that a non-whitelisted address cannot call `collect`.
-    function testCollect_NotWhitelisted() public {
-        vm.prank(anotherAddress);
-        vm.expectRevert("Not whitelisted");
-        trap.collect();
-    }
+    /// @notice Tests that `shouldRespond` returns false if the tracked addresses in the data are different.
+    function testShouldRespond_AddressDrift() public {
+        uint256 previousBalance = 10000 * 1e18;
+        uint256 currentBalance = previousBalance + trap.BALANCE_THRESHOLD_ABSOLUTE() + 1;
 
-    /// @notice Tests that the deployer can add a new whitelisted address.
-    function testWhitelist_Add() public {
-        trap.addWhitelisted(anotherAddress);
-        assertTrue(trap.whitelist(anotherAddress));
-    }
+        bytes memory data0 = abi.encode(anotherAddress, currentBalance);
+        bytes memory data1 = abi.encode(trackedAddress, previousBalance);
+        bytes[] memory data = new bytes[](2);
+        data[0] = data0;
+        data[1] = data1;
 
-    /// @notice Tests that a non-deployer cannot add a new whitelisted address.
-    function testWhitelist_Add_NotDeployer() public {
-        vm.prank(anotherAddress);
-        vm.expectRevert("Only deployer can add");
-        trap.addWhitelisted(anotherAddress);
-    }
-
-    /// @notice Tests that the deployer can remove a whitelisted address.
-    function testWhitelist_Remove() public {
-        trap.addWhitelisted(anotherAddress);
-        assertTrue(trap.whitelist(anotherAddress));
-        trap.removeWhitelisted(anotherAddress);
-        assertFalse(trap.whitelist(anotherAddress));
-    }
-
-    /// @notice Tests that a non-deployer cannot remove a whitelisted address.
-    function testWhitelist_Remove_NotDeployer() public {
-        trap.addWhitelisted(anotherAddress);
-        vm.prank(anotherAddress);
-        vm.expectRevert("Only deployer can remove");
-        trap.removeWhitelisted(anotherAddress);
+        (bool triggered, ) = trap.shouldRespond(data);
+        assertFalse(triggered);
     }
 }
