@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.20;
 
+
 import {IResponse} from "./interfaces/IResponse.sol";
 import {ResponseProtocol} from "./ResponseProtocol.sol";
 

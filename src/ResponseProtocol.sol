@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.12;
 
+
 contract ResponseProtocol {
     uint256 private balance;
     uint256 public blockNumber;
